@@ -1,34 +1,89 @@
 # Resolve react_native_pods.rb with node to allow for hoisting
-require Pod::Executable.execute_command('node', ['-p',
-  'require.resolve(
-    "react-native/scripts/react_native_pods.rb",
-    {paths: [process.argv[1]]},
-  )', __dir__]).strip
+require_relative '../node_modules/react-native/scripts/react_native_pods'
+require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, min_ios_version_supported
-prepare_react_native_project!
+platform :ios, '13.4'
+install! 'cocoapods', :deterministic_uuids => false
 
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
+# Prepare build settings
+$static_library_flags = ['-Wall', '-Werror', '-Wno-incomplete-umbrella']
+production = ENV['PRODUCTION'] == '1'
 
+# The following line is required for UseUnsafeLifecycleMethods to be false
+# and for avoiding a warning when using Hermes.
+# See https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L162
+use_react_native_codegen!
+
+# This is an optional step; needed for native components via Fabric
+$RN_FABRIC_ENABLED = false
+
+# Pods for SpeedWatchMobile
 target 'SpeedWatchMobile' do
-  config = use_native_modules!
+  # To enable Flipper, set the FLIPPER_VERSION environment variable to the version you want to use.
+  # For example, `FLIPPER_VERSION=0.212.1 pod install`.
+  #
+  # Note that if you have FLIPPER_VERSION defined, you also need to have the Flipper-iOS-SDK pod
+  # in your Podfile, for example via the `use_flipper` helper.
+  if ENV['FLIPPER_VERSION']
+    use_flipper!({'Flipper' => ENV['FLIPPER_VERSION']})
+  end
 
+  # React Native dependencies
   use_react_native!(
-    :path => config[:reactNativePath],
-    # An absolute path to your application root.
-    :app_path => "#{Pod::Config.instance.installation_root}/.."
+    :path => config.react_native_path,
+    :fabric_enabled => $RN_FABRIC_ENABLED,
+    # This has to be enabled when using Hermes. See https://reactnative.dev/docs/hermes
+    :hermes_enabled => true,
+    # It is recommended to use Flipper in debug builds.
+    # See https://reactnative.dev/docs/debugging#flipper
+    :flipper_configuration => FlipperConfiguration.enabled(['Debug'], { 'Flipper' => '0.212.1' }),
   )
+  
+  # Used to allow builds to succeed when using Fabric without Cmake.
+  # See https://github.com/software-mansion/react-native-screens/issues/1736.
+  $RNMkVendor =生产?  '../node_modules/react-native-maps/ios/Vendor' : '../node_modules/react-native-maps/ios/Vendor'
+  
+  # Pods for native modules
+  use_native_modules!
+  
+  # Pods for permissions
+  permissions_path = '../node_modules/react-native-permissions/ios'
+  pod 'Permission-LocationWhenInUse', :path => permissions_path
+  
+  # Pods for Firebase
+  $FirebaseSDKVersion = '10.29.0'
+  pod 'Firebase', :modular_headers => true
+  pod 'FirebaseCore', :modular_headers => true
+  pod 'FirebaseMessaging', :modular_headers => true
+  
+  # Other pods
+  pod 'GoogleMaps'
+  pod 'Google-Maps-iOS-Utils'
 
   post_install do |installer|
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
-    )
+    # React Native
+    react_native_post_install(installer)
+    
+    # Flipper
+    flipper_post_install(installer)
+
+    # Use frameworks
+    installer.pods_project.targets.each do |target|
+      if !target.name.include?('Pods-') && !target.name.include?('Tests')
+        target.build_configurations.each do |config|
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.4'
+          config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
+        end
+      end
+    end
+    
+    # RNFBMessaging
+    installer.pods_project.targets.each do |target|
+      if target.name == 'RNFBMessaging'
+        target.build_configurations.each do |config|
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.4'
+        end
+      end
+    end
   end
 end
