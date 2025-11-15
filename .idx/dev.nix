@@ -5,14 +5,15 @@
   # 📡 Channel selection
   channel = "stable-24.11";
 
-  # 📦 Core packages for React Native development
+  # 📦 Core packages for React Native + Firebase
   packages = [
     pkgs.nodejs
     pkgs.yarn
     pkgs.git
-    pkgs.watchman # required for React Native file watching
-    pkgs.openjdk17 # Java for Android builds
-    pkgs.gradle # Android build system
+    pkgs.watchman       # required for React Native file watching
+    pkgs.openjdk17      # Java for Android builds
+    pkgs.gradle         # Android build system
+    pkgs.firebase-tools # Firebase CLI
   ];
 
   # 🌍 Environment variables
@@ -24,6 +25,7 @@
       "/workspace/android-sdk/platform-tools"
       "/workspace/android-sdk/tools"
     ];
+    FIREBASE_PROJECT_ID = "demo-project"; # replace with your project ID
   };
 
   # 🧩 Extensions (VS Code style)
@@ -31,6 +33,7 @@
     "msjsdiag.vscode-react-native"
     "dbaeumer.vscode-eslint"
     "esbenp.prettier-vscode"
+    "firebase.firebase-vscode"
   ];
 
   # ⚡ Previews (live reload for React Native apps)
@@ -59,6 +62,7 @@
 
   idx.workspace.onStart = {
     metro = "npx react-native start";
+    firebase-emulators = "firebase emulators:start --only firestore,auth";
     default.openFiles = [ "App.js" ];
   };
 
@@ -71,4 +75,5 @@
   };
 
   services.redis.enable = true;
+  services.pubsub.enable = true;
 }
